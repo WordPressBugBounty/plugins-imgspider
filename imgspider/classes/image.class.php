@@ -194,7 +194,7 @@ class WB_IMGSPY_Image extends IMGSPY_Base
     {
 
         $name = basename($file);
-        if(!preg_match('#\.(jpg|png|jpeg)$#i',$name,$ext)){
+        if(!preg_match('#\.(jpg|png|jpeg|webp)$#i',$name,$ext)){
             return $file;
         }
         $meta_file = str_replace(ABSPATH,'',$file);

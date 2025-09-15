@@ -7,6 +7,7 @@ class WB_IMGSPY_Post extends IMGSPY_Base
     public static $last_err = null;
 
     protected static $mime_to_ext = array (
+        'image/webp' => 'webp',
         'image/jpeg' => 'jpg',
         'image/png' => 'png',
         'image/gif' => 'gif',
@@ -15,6 +16,7 @@ class WB_IMGSPY_Post extends IMGSPY_Base
     );
 
     protected static $ext_to_mime = array (
+        'webp' => 'image/webp',
         'jpg' => 'image/jpeg',
         'jpeg' => 'image/jpeg',
         'png' => 'image/png',
@@ -165,7 +167,7 @@ class WB_IMGSPY_Post extends IMGSPY_Base
             $error = 'empty file name';
             return false;
         }
-        if(!preg_match('#(jpg|jpeg|gif|png)$#i',$file['type'])){
+        if(!preg_match('#(jpg|jpeg|gif|png|webp)$#i',$file['type'])){
             $error = 'not image file';
             return false;
         }
@@ -187,6 +189,8 @@ class WB_IMGSPY_Post extends IMGSPY_Base
             $extension='png';
         } else if ($type == 'image/jpeg'){
             $extension = 'jpg';
+        } else if ($type == 'image/webp'){
+            $extension = 'webp';
         }else{
             return false;
         }
@@ -196,7 +200,7 @@ class WB_IMGSPY_Post extends IMGSPY_Base
             $name = sanitize_text_field($filename);
         }
 
-        if(!preg_match('#\.(jpg|jpeg|png|gif)$#i',$name)){
+        if(!preg_match('#\.(jpg|jpeg|png|gif|webp)$#i',$name)){
             $name = $name .'.'.$extension;
         }
 

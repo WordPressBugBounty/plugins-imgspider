@@ -2,7 +2,7 @@
 /*
 Plugin Name: IMGspider
 Plugin URI: http://wordpress.org/plugins/imgspider/
-Version: 2.3.11
+Version: 2.3.12
 Description: IMGspider（图片蜘蛛）是一款用于WordPress文章图片抓取的WordPress插件，支持JPG, JPEG, PNG, GIF, BMP, TIF等常见图片爬取下载，实现一键抓取文章内容所有引用图片到本地服务器。
 Author: 闪电博
 Author URI: http://www.wbolt.com/
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('IMGSPY_PATH', dirname(__FILE__));
 define('IMGSPY_BASE_FILE', __FILE__);
-define('IMGSPY_VERSION', '2.3.11');
+define('IMGSPY_VERSION', '2.3.12');
 define('IMGSPY_CODE', 'imgspider-pro');
 define('IMGSPY_URI', plugin_dir_url(IMGSPY_BASE_FILE));
 
