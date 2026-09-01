@@ -6,8 +6,30 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
 
   public static function init()
   {
-    add_action('wp_ajax_wb_scrapy_image', array(__CLASS__, 'wp_ajax_settings'));
-    add_action('wp_ajax_wb_scrapy_image', array(__CLASS__, 'wp_ajax_wb_scrapy_image'));
+    add_action('wp_ajax_wb_scrapy_image', array(__CLASS__, 'dispatch'));
+  }
+
+  public static function dispatch()
+  {
+      $op = self::param('op');
+      if (!$op && isset($_REQUEST['do'])) {
+          $op = sanitize_text_field(wp_unslash($_REQUEST['do']));
+      }
+      if (!$op) {
+          return;
+      }
+      $settings_ops = array(
+          'history', 'scan', 'down', 'watermark_preview', 'recover', 'remove',
+          'verify', 'set_setting', 'get_setting', 'chk_ver', 'chk_ver_ce', 'get_ce_cont',
+      );
+      $scrapy_ops = array('save_img', 'save_paste_image', 'scrapy', 'options');
+      if (in_array($op, $settings_ops, true)) {
+          self::wp_ajax_settings();
+          return;
+      }
+      if (in_array($op, $scrapy_ops, true)) {
+          self::wp_ajax_wb_scrapy_image();
+      }
   }
 
   public static function wp_ajax_settings()
@@ -82,8 +104,8 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
           case 'scan':
 
               $domain = sanitize_textarea_field(self::param('domain'));
-              $scan_type = self::array_sanitize_text_field(self::param('scan_type', []));
-              $scan_status = self::array_sanitize_text_field(self::param('scan_status', []));
+              $scan_type = self::sanitize_post_types(self::array_sanitize_text_field(self::param('scan_type', [])));
+              $scan_status = self::sanitize_post_statuses(self::array_sanitize_text_field(self::param('scan_status', [])));
               $cat = absint(self::param('cat', 0 ));
               $start_id = absint(self::param('start_id', 0));
               $finnish_id = absint(self::param('finnish_id', 0));
@@ -128,25 +150,20 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
                   $job = array('scan_num' => 0, 'offset' => 0, 'total' => 0, 'num' => 10, 'finnish' => 0, 'type' => array('post'));
               }
 
-              $offset = $job['offset'];
-              $num = $job['num'];
+              $offset = max(0, absint($job['offset']));
+              $num = max(1, min(50, absint($job['num'])));
 
-              $find_total = '';
-              if ($job['total'] < 1) {
-                  $find_total = 'SQL_CALC_FOUND_ROWS';
-              }
               $where = [];
-              $post_type_in = implode("','", $scan_type);
-              $where[] = "post_type IN('$post_type_in')";
+              $where[] = self::sql_in($db, 'post_type', $scan_type, '%s');
               if ($scan_status) {
-                  $where[] = "post_status IN('" . implode("','", $scan_status) . "')";
+                  $where[] = self::sql_in($db, 'post_status', $scan_status, '%s');
               }
 
               if ($start_id > 0) {
-                  $where[] = "ID>=" . $start_id;
+                  $where[] = $db->prepare('ID>=%d', $start_id);
               }
               if ($finnish_id > 0) {
-                  $where[] = "ID<=" . $finnish_id;
+                  $where[] = $db->prepare('ID<=%d', $finnish_id);
               }
 
               if ($start_post_date) {
@@ -159,25 +176,29 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
 
               if ($cat) {
                   $child = get_term_children($cat, 'category');
+                  if (is_wp_error($child)) {
+                      $child = array();
+                  }
                   $child[] = $cat;
-                  $term_id = implode(',', $child);
+                  $term_ids = self::prepare_in_ids($child);
                   $where[] = "EXISTS(SELECT tr.object_id FROM $db->term_taxonomy tt,$db->term_relationships tr  
-                                    WHERE tt.term_id IN($term_id) AND tt.term_taxonomy_id=tr.term_taxonomy_id AND tr.object_id=$db->posts.ID )";
+                                    WHERE tt.term_id IN($term_ids) AND tt.term_taxonomy_id=tr.term_taxonomy_id AND tr.object_id=$db->posts.ID )";
               }
 
-              $sql = "SELECT $find_total * FROM $db->posts WHERE ";
-              $sql .= implode(' AND ', $where);
+              $where_sql = implode(' AND ', array_filter($where));
+              if ($job['total'] < 1) {
+                  $job['total'] = (int) $db->get_var("SELECT COUNT(*) FROM $db->posts WHERE $where_sql");
+              }
+
+              $sql = "SELECT * FROM $db->posts WHERE " . $where_sql;
               if ($sort == 2) {
                   $sql .= " ORDER BY ID ASC";
               } else {
                   $sql .= " ORDER BY ID DESC";
               }
-
-              $sql .= " LIMIT $offset,$num";
-
+              $sql .= $db->prepare(" LIMIT %d,%d", $offset, $num);
 
               $list = $db->get_results($sql);
-              $job['total'] = $db->get_var("SELECT FOUND_ROWS()");
               $images = array();
               $idx = 0;
               if ($list) foreach ($list as $r) {
@@ -373,9 +394,9 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
 
               break;
           case 'watermark_preview':
-              $img = IMGSPY_PATH . '/assets/img/demo.jpeg';
-              $img2 = IMGSPY_PATH . '/assets/img/demo-water.jpeg';
-              if (copy($img, $img2)) {
+              $img = wp_normalize_path(IMGSPY_PATH . '/assets/img/demo.jpeg');
+              $img2 = wp_normalize_path(IMGSPY_PATH . '/assets/img/demo-water.jpeg');
+              if (is_readable($img) && copy($img, $img2)) {
                   WB_IMGSPY_Image::watermark_preview($img2);
               }
               exit();
@@ -414,7 +435,7 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
                       $err = '不合法请求，参数无效';
                       break;
                   }
-                  $http = wp_remote_post('https://www.wbolt.com/wb-api/v1/verify', array('sslverify' => false, 'body' => $param, 'headers' => array('referer' => home_url()),));
+                  $http = wp_remote_post('https://www.wbolt.com/wb-api/v1/verify', array('sslverify' => self::sslverify(), 'body' => $param, 'headers' => array('referer' => home_url()),));
                   if (is_wp_error($http)) {
                       $err = '校验失败，请稍后再试（错误代码001[' . $http->get_error_message() . '])';
                       break;
@@ -528,30 +549,34 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
               break;
 
           case 'chk_ver':
-              $http = wp_remote_get('https://www.wbolt.com/wb-api/v1/themes/checkver?code=' . IMGSPY_CODE . '&ver=' . IMGSPY_VERSION . '&chk=1', array('sslverify' => false, 'headers' => array('referer' => home_url()),));
-
-              if (wp_remote_retrieve_response_code($http) == 200) {
-                  echo esc_html(wp_remote_retrieve_body($http));
+              $http = wp_remote_get(
+                  'https://www.wbolt.com/wb-api/v1/themes/checkver?code=' . rawurlencode(IMGSPY_CODE) . '&ver=' . rawurlencode(IMGSPY_VERSION) . '&chk=1',
+                  array('sslverify' => self::sslverify(), 'headers' => array('referer' => home_url()))
+              );
+              $body = '';
+              if (!is_wp_error($http) && wp_remote_retrieve_response_code($http) == 200) {
+                  $body = wp_remote_retrieve_body($http);
               }
-
-              exit();
+              self::ajax_resp(array('code' => 0, 'data' => $body));
               break;
 
           case 'chk_ver_ce':
-              $http = wp_remote_get('https://www.wbolt.com/wb-api/v1/extension/ver?code=' . IMGSPY_CODE . '&ver=', array('sslverify' => false, 'headers' => array('referer' => home_url()),));
-              if (wp_remote_retrieve_response_code($http) == 200) {
-                  echo esc_html(wp_remote_retrieve_body($http));
+              $http = wp_remote_get(
+                  'https://www.wbolt.com/wb-api/v1/extension/ver?code=' . rawurlencode(IMGSPY_CODE) . '&ver=',
+                  array('sslverify' => self::sslverify(), 'headers' => array('referer' => home_url()))
+              );
+              $ver = '';
+              if (!is_wp_error($http) && wp_remote_retrieve_response_code($http) == 200) {
+                  $ver = sanitize_text_field(wp_remote_retrieve_body($http));
               }
-
-              exit();
+              self::ajax_resp(array('code' => 0, 'data' => $ver));
               break;
 
           case 'get_ce_cont':
-              $http = wp_remote_get('https://www.wbolt.com/plugins/wbolt-assistant-chrome-extension/', array('sslverify' => false, 'headers' => array('referer' => home_url()),));
-              if (wp_remote_retrieve_response_code($http) == 200) {
-                  echo $http['body'];
-              }
-              exit();
+              self::ajax_resp(array(
+                  'code' => 0,
+                  'url' => 'https://www.wbolt.com/plugins/wbolt-assistant-chrome-extension/',
+              ));
               break;
       }
   }

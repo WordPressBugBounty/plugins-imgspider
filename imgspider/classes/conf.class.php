@@ -132,26 +132,14 @@ class WB_IMGSPY_Conf
 
   public static function insert_assets()
   {
-
-    $assets = include __DIR__ . '/plugins_assets.php';
-    if (!$assets || !is_array($assets)) {
-      return;
-    }
-
-    $wp_styles = wp_styles();
-    if (isset($assets['css']) && is_array($assets['css'])) foreach ($assets['css'] as $r) {
-      $wp_styles->add($r['handle'], IMGSPY_URI . $r['src'], $r['dep'], null, $r['args']);
-      $wp_styles->enqueue($r['handle']); //.'?v=1'
-    }
-    if (isset($assets['js']) && is_array($assets['js'])) foreach ($assets['js'] as $r) {
-      if (!$r['src'] && $r['in_line']) {
-        wp_register_script($r['handle'], false, $r['dep'], false, true);
-        wp_enqueue_script($r['handle']);
-        wp_add_inline_script($r['handle'], $r['in_line'], 'after');
-      } else if ($r['src']) {
-        wp_enqueue_script($r['handle'], IMGSPY_URI . $r['src'], $r['dep'], null, true);
-      }
-    }
+    $ver = rawurlencode(IMGSPY_VERSION);
+    echo '<link rel="stylesheet" href="' . esc_url(IMGSPY_URI . 'setting/vendor/wbs-lab-base.css?ver=' . $ver) . '">' . "\n";
+    echo '<link rel="stylesheet" href="' . esc_url(IMGSPY_URI . 'setting/vendor/element-plus.css?ver=' . $ver) . '">' . "\n";
+    echo IMGSPY_Vite::vite(
+      'src/main.js',
+      IMGSPY_PATH . '/setting/assets/',
+      IMGSPY_URI . 'setting/assets/'
+    );
   }
 
   public static function admin_enqueue_scripts($hook)
@@ -195,6 +183,7 @@ class WB_IMGSPY_Conf
       'pd_code' => IMGSPY_CODE,
       'pd_title' => 'IMGspider-图片蜘蛛',
       'pd_version' => IMGSPY_VERSION,
+      'locale' => get_locale(),
       'is_pro' => $imgspider_ver,
       'doc_url' => 'https://www.wbolt.com/imgspider-plugin-documentation.html',
       'action' => array(

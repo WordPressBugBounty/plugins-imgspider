@@ -17,8 +17,8 @@ class IMGSPY_Admin extends IMGSPY_Base
     {
 
 
-        register_deactivation_hook(IMGSPY_BASE_FILE, array(__CLASS__, 'plugin_deactivate'));
         add_action('init', array(__CLASS__, 'wp_init'));
+        add_action('admin_init', array(__CLASS__, 'maybe_schedule_cron'));
 
         if (is_admin()) {
 
@@ -39,15 +39,19 @@ class IMGSPY_Admin extends IMGSPY_Base
 
         add_action('wb_imgspy_auto_save_image', array(__CLASS__, 'wb_imgspy_auto_save_image'));
 
-        if (!wp_next_scheduled('wb_imgspy_auto_save_image')) {
-            wp_schedule_event(strtotime(current_time('mysql', 1)), 'hourly', 'wb_imgspy_auto_save_image');
-        }
-
         WB_IMGSPY_Image::init_watermark();
+    }
+
+    public static function maybe_schedule_cron()
+    {
+        if (!wp_next_scheduled('wb_imgspy_auto_save_image')) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', 'wb_imgspy_auto_save_image');
+        }
     }
 
     public static function plugin_activate()
     {
+        self::maybe_schedule_cron();
     }
 
     public static function plugin_deactivate()
@@ -198,11 +202,16 @@ class IMGSPY_Admin extends IMGSPY_Base
                 break;
             }
             $db = self::db();
-            $sql = "SELECT a.ID,a.post_title,a.post_content,b.meta_id FROM $db->posts a,$db->postmeta b WHERE a.ID=b.post_id AND b.meta_key='wb_imgspy_auto_save_image' AND b.meta_value='1'";
+            $sql = $db->prepare(
+                "SELECT a.ID,a.post_title,a.post_content,b.meta_id FROM $db->posts a,$db->postmeta b WHERE a.ID=b.post_id AND b.meta_key=%s AND b.meta_value=%s",
+                'wb_imgspy_auto_save_image',
+                '1'
+            );
             if ($save_fail) {
-                $sql .= " AND a.ID NOT IN(" . implode(',', $save_fail) . ")";
+                $sql .= " AND a.ID NOT IN(" . self::prepare_in_ids($save_fail) . ")";
             }
-            $posts = $db->get_results($sql . " LIMIT $num");
+            $num = max(1, min(20, absint($num)));
+            $posts = $db->get_results($sql . $db->prepare(" LIMIT %d", $num));
 
             if (!$posts) {
                 break;

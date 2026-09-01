@@ -3,8 +3,9 @@ Contributors: wbolt,mrkwong
 Donate link: http://www.wbolt.com/
 Tags: 图片爬取, 图片远程下载, 图片下载, 图片蜘蛛, 图片代理下载, 图片抓取
 Requires at least: 6.0
-Tested up to: 6.8
-Stable tag: 2.3.12
+Tested up to: 7.1
+Requires PHP: 7.4
+Stable tag: 2.4.0
 License: GNU General Public License v2.0 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -191,6 +192,19 @@ FTP上传安装
 6. 文章编辑器图片抓取成功界面截图.
 
 == Changelog ==
+
+= 2.4.0 =
+* 兼容 WordPress 6.0–7.1 与 PHP 7.4–8.5；
+* 后台设置页升级至 Vue 3 + Vite + Element Plus；
+* 主题推荐 / 插件推荐 / WP教程改为仪表盘三等分模块（标题+日期，页脚学院|工具|博客）；
+* 采集出站默认校验 SSL，并拦截私网 / 元数据 / 非 http(s) 地址（过滤器 imgspy_allowed_remote_url / imgspy_sslverify 可覆盖）；
+* AJAX 合并为单入口，扫描与定时任务 SQL 改为预处理，去掉 SQL_CALC_FOUND_ROWS；
+* 定时任务改为激活时调度 + 后台自愈，不再每次前台请求检查；
+* 水印预览仅读取插件演示图，水印图路径限制在媒体上传目录内；
+* 版本检测与扩展说明改为 JSON，不再回显远程 HTML；
+* 过滤格式示例去掉 svg；
+* 插件助手页头图改为本地资源，避免远程 CDN 返回 403；
+* 新增卸载脚本清理选项与定时任务。
 
 = 2.3.12 =
 * 修正Webp图片采集失败问题。

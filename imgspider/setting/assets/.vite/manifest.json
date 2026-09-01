@@ -1,0 +1,10 @@
+{
+  "src/main.js": {
+    "file": "wbs-3CTLGSDE.js",
+    "src": "src/main.js",
+    "isEntry": true,
+    "css": [
+      "wbs-CE75N2R3.css"
+    ]
+  }
+}

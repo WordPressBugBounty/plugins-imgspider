@@ -468,6 +468,39 @@ class WB_IMGSPY_Image extends IMGSPY_Base
     }
 
 
+    public static function resolve_upload_path($url_or_path)
+    {
+        $url_or_path = trim((string) $url_or_path);
+        if ($url_or_path === '') {
+            return '';
+        }
+        $uploads = wp_upload_dir();
+        $basedir = wp_normalize_path($uploads['basedir']);
+        $baseurl = (string) $uploads['baseurl'];
+
+        if (preg_match('#^https?://#i', $url_or_path)) {
+            if (strpos($url_or_path, $baseurl) !== 0) {
+                return '';
+            }
+            $path = $basedir . substr($url_or_path, strlen($baseurl));
+        } else {
+            $path = wp_normalize_path($url_or_path);
+            if (strpos($path, $basedir) !== 0) {
+                $path = $basedir . '/' . ltrim($path, '/');
+            }
+        }
+        $path = wp_normalize_path($path);
+        $real = realpath($path);
+        if (!$real) {
+            return '';
+        }
+        $real = wp_normalize_path($real);
+        if (strpos($real, $basedir) !== 0) {
+            return '';
+        }
+        return $real;
+    }
+
     public static function watermark_preview($src_img)
     {
         do{
@@ -496,9 +529,12 @@ class WB_IMGSPY_Image extends IMGSPY_Base
             }
         }while(0);
 
-        echo base64_encode(file_get_contents($src_img));
-        //header('Content-type: image/jpeg;');
-        //readfile($src_img);
+        $allowed = wp_normalize_path(IMGSPY_PATH . '/assets/img/demo-water.jpeg');
+        $src_img = wp_normalize_path((string) $src_img);
+        if ($src_img !== $allowed || !is_readable($src_img)) {
+            exit();
+        }
+        echo base64_encode((string) file_get_contents($src_img));
         exit();
     }
 
@@ -511,33 +547,9 @@ class WB_IMGSPY_Image extends IMGSPY_Base
         if($rule['type'] != 1 || !$rule['image']){
             return 2;
         }
-        $water_src = str_replace(home_url('/'),ABSPATH,$rule['image']);
-        if(preg_match('#^https?://#',$water_src)){
-            $water_src = preg_replace('#^https?://[^/]+/#',ABSPATH,$water_src);
-        }
-
-        if(!file_exists($water_src)){
-            do{
-                $local_src_name = basename($water_src);
-                $local_src = IMGSPY_PATH.'/assets/'.md5($water_src).'-w-'.substr($local_src_name,'-4');
-                if(file_exists($local_src)){
-                    $water_src = $local_src;
-                    break;
-                }
-                $http = wp_remote_get($rule['image']);
-                if(is_wp_error($http)){
-                   return 3;
-                }
-                $data = wp_remote_retrieve_body($http);
-                if(!$data){
-                    return 4;
-                }
-                if(file_put_contents($local_src,$data)){
-                    $water_src = $local_src;
-                    break;
-                }
-                return 5;
-            }while(0);
+        $water_src = self::resolve_upload_path($rule['image']);
+        if (!$water_src || !file_exists($water_src)) {
+            return 2;
         }
 
         $water_image = $water_src;
