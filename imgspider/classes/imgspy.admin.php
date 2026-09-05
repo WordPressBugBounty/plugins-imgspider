@@ -19,6 +19,7 @@ class IMGSPY_Admin extends IMGSPY_Base
 
         add_action('init', array(__CLASS__, 'wp_init'));
         add_action('admin_init', array(__CLASS__, 'maybe_schedule_cron'));
+        add_action('admin_init', array('WB_IMGSPY_Image', 'maybe_schedule_watermark'));
 
         if (is_admin()) {
 
@@ -30,6 +31,10 @@ class IMGSPY_Admin extends IMGSPY_Base
 
             add_action('admin_head', array(__CLASS__, 'admin_head_mark'));
             add_action('save_post', array(__CLASS__, 'save_post'), 10, 3);
+            add_filter('manage_posts_columns', array(__CLASS__, 'posts_columns'));
+            add_action('manage_posts_custom_column', array(__CLASS__, 'posts_custom_column'), 10, 2);
+            add_filter('manage_pages_columns', array(__CLASS__, 'posts_columns'));
+            add_action('manage_pages_custom_column', array(__CLASS__, 'posts_custom_column'), 10, 2);
         }
 
         WB_IMGSPY_Conf::init();
@@ -52,6 +57,7 @@ class IMGSPY_Admin extends IMGSPY_Base
     public static function plugin_activate()
     {
         self::maybe_schedule_cron();
+        WB_IMGSPY_Image::maybe_schedule_watermark();
     }
 
     public static function plugin_deactivate()
@@ -122,11 +128,15 @@ class IMGSPY_Admin extends IMGSPY_Base
             return;
         }
 
-        //自动保存图片
         $cnf = WB_IMGSPY_Conf::opt();
-        if ($cnf['del_src_url']) {
-            //del_src_url
-            self::deleteImageLink($post_ID, $post);
+        if (!empty($cnf['del_src_url'])) {
+            $stripped = WB_IMGSPY_Post::strip_image_links($post->post_content);
+            if ($stripped !== $post->post_content) {
+                remove_action('save_post', array(__CLASS__, 'save_post'), 10);
+                wp_update_post(array('ID' => $post_ID, 'post_content' => $stripped));
+                add_action('save_post', array(__CLASS__, 'save_post'), 10, 3);
+                $post->post_content = $stripped;
+            }
         }
 
         if ($cnf['mode']) {
@@ -192,6 +202,26 @@ class IMGSPY_Admin extends IMGSPY_Base
             return 0;
         });
 
+        $auto = isset($cnf['auto']) && is_array($cnf['auto']) ? $cnf['auto'] : array();
+        $max_per_run = (int) apply_filters('imgspy_auto_max_per_run', isset($auto['max_per_run']) ? $auto['max_per_run'] : 20);
+        $max_per_run = max(1, min(100, $max_per_run));
+        $max_per_post = max(1, min(200, isset($auto['max_per_post']) ? (int) $auto['max_per_post'] : 30));
+        $cool_hours = max(1, min(168, isset($auto['fail_cool_hours']) ? (int) $auto['fail_cool_hours'] : 24));
+
+        $db = self::db();
+        $expired = $db->get_col($db->prepare(
+            "SELECT post_id FROM $db->postmeta WHERE meta_key=%s AND CAST(meta_value AS UNSIGNED) <= %d",
+            'wb_imgspy_fail_until',
+            time()
+        ));
+        if ($expired) {
+            foreach ($expired as $pid) {
+                update_post_meta((int) $pid, 'wb_imgspy_auto_save_image', '1');
+                delete_post_meta((int) $pid, 'wb_imgspy_fail_until');
+            }
+        }
+
+        $saved_images = 0;
         $time_start = time();
         $page = -1;
         $num = 5;
@@ -201,7 +231,9 @@ class IMGSPY_Admin extends IMGSPY_Base
             if ($page > 10) {
                 break;
             }
-            $db = self::db();
+            if ($saved_images >= $max_per_run) {
+                break;
+            }
             $sql = $db->prepare(
                 "SELECT a.ID,a.post_title,a.post_content,b.meta_id FROM $db->posts a,$db->postmeta b WHERE a.ID=b.post_id AND b.meta_key=%s AND b.meta_value=%s",
                 'wb_imgspy_auto_save_image',
@@ -230,11 +262,20 @@ class IMGSPY_Admin extends IMGSPY_Base
                 $success_list = array();
                 $all_success = 1;
                 $upload_errors = [];
+                $tried = 0;
                 foreach ($img_list as $key => $img) {
-
+                    if ($tried >= $max_per_post || $saved_images >= $max_per_run) {
+                        $all_success = 0;
+                        $upload_errors[] = [$img, 'over quota'];
+                        break;
+                    }
+                    $tried++;
                     $ret = WB_IMGSPY_Post::upload($img, $post->ID, false);
                     if ($ret && isset($ret['id'])) {
                         $success_list[$key] = $ret;
+                        if (empty($ret['reused'])) {
+                            $saved_images++;
+                        }
                     } else {
                         $save_fail[] = $post->ID;
                         $upload_errors[] = [$img, WB_IMGSPY_Post::$last_err];
@@ -247,8 +288,10 @@ class IMGSPY_Admin extends IMGSPY_Base
                 }
                 if ($all_success) {
                     self::remove_auto_save_image($post->ID);
+                    delete_post_meta($post->ID, 'wb_imgspy_fail_until');
                 } else {
                     update_post_meta($post->ID, 'wb_imgspy_auto_save_image', '2');
+                    update_post_meta($post->ID, 'wb_imgspy_fail_until', time() + $cool_hours * HOUR_IN_SECONDS);
                 }
                 if ($upload_errors) {
                     update_post_meta($post->ID, 'imgspy_errors', $upload_errors);
@@ -256,6 +299,27 @@ class IMGSPY_Admin extends IMGSPY_Base
             }
             $time_now = time();
         } while (1);
+    }
+
+    public static function posts_columns($columns)
+    {
+        $columns['imgspy_fail'] = __('采图失败', 'imgspider');
+        return $columns;
+    }
+
+    public static function posts_custom_column($column, $post_id)
+    {
+        if ($column !== 'imgspy_fail') {
+            return;
+        }
+        $flag = get_post_meta($post_id, 'wb_imgspy_auto_save_image', true);
+        if ((string) $flag !== '2') {
+            echo '—';
+            return;
+        }
+        $until = (int) get_post_meta($post_id, 'wb_imgspy_fail_until', true);
+        $retry = $until > time() ? sprintf(/* translators: %s datetime */ __('冷却至 %s', 'imgspider'), wp_date('Y-m-d H:i', $until)) : __('可重试', 'imgspider');
+        echo '<span style="color:#d63638;">' . esc_html($retry) . '</span>';
     }
 
     public static function auto_save_image($post_ID, $post, $update)
@@ -285,7 +349,7 @@ class IMGSPY_Admin extends IMGSPY_Base
             wp_enqueue_script(
                 'wbp-imgscrapy',
                 IMGSPY_URI . 'assets/block/wb_block.js',
-                array('lodash', 'wp-components', 'wp-compose', 'wp-core-data', 'wp-data', 'wp-edit-post', 'wp-element', 'wp-plugins', 'wp-polyfill'),
+                array('lodash', 'wp-components', 'wp-compose', 'wp-core-data', 'wp-data', 'wp-editor', 'wp-edit-post', 'wp-element', 'wp-plugins', 'wp-blocks', 'wp-polyfill'),
                 IMGSPY_VERSION
             );
 

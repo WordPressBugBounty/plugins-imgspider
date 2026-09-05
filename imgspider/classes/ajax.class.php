@@ -359,7 +359,7 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
                   $post = $db->get_row($db->prepare($sql, $post_id));
                   $content = $post->post_content;
                   if ($config['del_src_url']) {
-                      $content = self::replaceImageLink($content);
+                      $content = WB_IMGSPY_Post::strip_image_links($content);
                   }
 
                   $has_change = 0;
@@ -794,31 +794,6 @@ class WB_IMGSPY_Ajax extends IMGSPY_Base
 
   public static function replaceImageLink($content)
   {
-    //error_log('replace'."\n",3,__DIR__.'/log.txt');
-    if (!preg_match_all('#(<a[^>]+>)\s*(<img[^>]+>)\s*</a>#is', $content, $match)) {
-      //error_log('empty match'."\n",3,__DIR__.'/log.txt');
-      return $content;
-    }
-    //error_log(''.(print_r($match[1],1))."\n",3,__DIR__.'/log.txt');
-    foreach ($match[1] as $k => $a_html) {
-      if (!preg_match('#href=([^\s]+)#', $a_html, $m)) {
-        //error_log('empty href'."\n",3,__DIR__.'/log.txt');
-        continue;
-      }
-        $content = str_replace($match[0][$k], $match[2][$k], $content);
-      /*
-      $link = preg_replace('#/?>$#', '', $m[1]);
-      $link = trim($link, "\"'");
-
-      //error_log($link."\n",3,__DIR__.'/log.txt');
-      if (!preg_match('#\.(png|jpg|jpeg|gif)$#i', $link)) {
-        //error_log('href not image'."\n",3,__DIR__.'/log.txt');
-        continue;
-      }
-      //error_log('replace image link'."\n",3,__DIR__.'/log.txt');
-      $content = str_replace($match[0][$k], $match[2][$k], $content);*/
-    }
-
-    return $content;
+      return WB_IMGSPY_Post::strip_image_links($content);
   }
 }

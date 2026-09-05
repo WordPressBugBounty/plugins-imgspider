@@ -5,17 +5,17 @@ Tags: 图片爬取, 图片远程下载, 图片下载, 图片蜘蛛, 图片代理
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 2.4.0
+Stable tag: 2.5.0
 License: GNU General Public License v2.0 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
-IMGspider（图片蜘蛛）是一款用于WordPress文章图片抓取的WordPress插件，支持JPG, JPEG, PNG, GIF, BMP, TIF等常见图片爬取下载，实现一键抓取文章内容所有引用图片到本地服务器。
+IMGspider（图片蜘蛛）是一款用于WordPress文章图片抓取的WordPress插件，支持JPG, JPEG, PNG, GIF, BMP, TIF, WebP, AVIF等常见图片爬取下载，实现一键抓取文章内容所有引用图片到本地服务器。
 
 Pro版本是在原有的IMGspider图片采集插件基础上，进行全新的功能扩展专业版插件。IMGspider Pro在免费版本的基础上，新增了超强的Chrome图片采集助手浏览器扩展，实现更高效的图片采集效率及更多网站图片采集支持（如微信、头条等）。
 
 == Description ==
 
-IMGspider（图片蜘蛛）是一款用于WordPress文章图片抓取的WordPress插件，支持JPG, JPEG, PNG, GIF, BMP, TIF等常见图片爬取下载，实现一键抓取文章内容所有引用图片到本地服务器。
+IMGspider（图片蜘蛛）是一款用于WordPress文章图片抓取的WordPress插件，支持JPG, JPEG, PNG, GIF, BMP, TIF, WebP, AVIF等常见图片爬取下载，实现一键抓取文章内容所有引用图片到本地服务器。
 
 该插件能够帮助WordPress站长在转载其他网站的文章时，快速将转载的文章内容中的站外图片抓取到本地服务器，而无需手动下载逐一上传，大大提升了站长的工作效率，并且IMGspider图片采集插件支持自动和手动采集两种模式，且支持代理服务器采集。
 
@@ -192,6 +192,20 @@ FTP上传安装
 6. 文章编辑器图片抓取成功界面截图.
 
 == Changelog ==
+
+= 2.5.0 =
+* 采集后图片改用 WordPress 附件标签输出，一次写入 srcset / sizes，并修正高度与 alt/title 转义；
+* 跨文章按来源 URL 去重，附件记录 _wb_imgspy_source，文件仍在则复用；
+* 找图补齐 srcset 与封面 background-image 中的远程图；
+* 主机支持时允许采集 AVIF（不转码）；可选采集 APNG；SVG 继续拦截；
+* 自动采集增加单次/单篇配额与失败冷却；文章列表增加「采图失败」列；
+* 排除域名增加 CDN / 图床点选预设（不默认开启）；
+* 水印遇到 OSS / 非本地文件时跳过，不再 Fatal；「应用到全部」改为后台自愈调度；
+* 水印支持系统中文字体与自定义字体文件；阈值继续可在设置页调整；
+* 可选「采集时转 WebP」（默认关，动图保持原格式）；站点级压缩仍建议使用 WPTurbo；
+* 移除包裹图片的超链接改为 PHP 一处处理，Gutenberg 保存后同样生效；
+* 修复 PHP 7.4 上 str_contains 导致的致命错误；
+* Gutenberg 侧栏改挂 wp.editor（兼容 6.6+），找图规则与 PHP 对齐，构建改为 esbuild。
 
 = 2.4.0 =
 * 兼容 WordPress 6.0–7.1 与 PHP 7.4–8.5；

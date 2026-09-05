@@ -193,7 +193,18 @@ class WB_IMGSPY_Conf
       ),
       'watermark' => preg_match('/Imagick/i', $editor),
       'watermark_preview' => '',
-      'prompt' => $prompt_items
+      'prompt' => $prompt_items,
+      'supports_avif' => WB_IMGSPY_Post::supports_avif(),
+      'supports_webp' => function_exists('wp_image_editor_supports') && wp_image_editor_supports(array('mime_type' => 'image/webp')),
+      'cdn_presets' => array(
+        'alicdn.com',
+        'aliyuncs.com',
+        'qiniucdn.com',
+        'myqcloud.com',
+        'upyun.com',
+        'byteimg.com',
+        'zhimg.com',
+      ),
     );
 
     $category = array_column(get_terms(['taxonomy' => 'category', 'parent' => 0,]), 'name', 'term_id');
@@ -352,6 +363,17 @@ class WB_IMGSPY_Conf
     } else {
       $opt_data['filter']['type'] = [];
     }
+    if (isset($opt_data['convert_webp'])) {
+      $opt_data['convert_webp'] = (int) $opt_data['convert_webp'] ? 1 : 0;
+    }
+    if (isset($opt_data['allow_apng'])) {
+      $opt_data['allow_apng'] = (int) $opt_data['allow_apng'] ? 1 : 0;
+    }
+    if (isset($opt_data['auto']) && is_array($opt_data['auto'])) {
+      $opt_data['auto']['max_per_run'] = max(1, min(100, absint(isset($opt_data['auto']['max_per_run']) ? $opt_data['auto']['max_per_run'] : 20)));
+      $opt_data['auto']['max_per_post'] = max(1, min(200, absint(isset($opt_data['auto']['max_per_post']) ? $opt_data['auto']['max_per_post'] : 30)));
+      $opt_data['auto']['fail_cool_hours'] = max(1, min(168, absint(isset($opt_data['auto']['fail_cool_hours']) ? $opt_data['auto']['fail_cool_hours'] : 24)));
+    }
 
     update_option(self::$optionName, $opt_data, false);
   }
@@ -383,6 +405,13 @@ class WB_IMGSPY_Conf
 
       'del_src_url' => 0,
       'thumbnail' => 0, //第一张图作为缩略图
+      'convert_webp' => 0,
+      'allow_apng' => 1,
+      'auto' => array(
+        'max_per_run' => 20,
+        'max_per_post' => 30,
+        'fail_cool_hours' => 24,
+      ),
       'rule' => array(
         'size' => 0,
         'custom_size' => '',
@@ -404,6 +433,7 @@ class WB_IMGSPY_Conf
         'image' => '',
         'text' => '',
         'font' => '',
+        'font_file' => '',
         'size' => 32,
         'color' => '',
         'alpha' => 30,
@@ -439,6 +469,16 @@ class WB_IMGSPY_Conf
         $opt['watermark'][$f] = intval($opt['watermark'][$f]);
       }
     }
+    foreach (['max_per_run', 'max_per_post', 'fail_cool_hours'] as $f) {
+      if (!isset($opt['auto'])) {
+        break;
+      }
+      if (isset($opt['auto'][$f])) {
+        $opt['auto'][$f] = absint($opt['auto'][$f]);
+      }
+    }
+    $opt['convert_webp'] = isset($opt['convert_webp']) ? (string) intval($opt['convert_webp']) : '0';
+    $opt['allow_apng'] = isset($opt['allow_apng']) ? (string) intval($opt['allow_apng']) : '1';
 
     return apply_filters('wb_imgspy_cnf', $opt);
   }

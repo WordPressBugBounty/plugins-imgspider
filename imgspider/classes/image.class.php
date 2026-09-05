@@ -148,6 +148,54 @@ class WB_IMGSPY_Image extends IMGSPY_Base
         return  _wp_image_editor_choose( $args );
     }
 
+    public static function resolve_watermark_font($font_id, $custom = '')
+    {
+        $bundled = array(
+            0 => 'consolas-webfont.ttf',
+            1 => 'Arial.ttf',
+            2 => 'Arial_Black.ttf',
+            3 => 'Comic_Sans_MS.ttf',
+            4 => 'Courier_New.ttf',
+            5 => 'Georgia.ttf',
+            6 => 'Impact.ttf',
+            7 => 'Tahoma.ttf',
+            8 => 'Times_New_Roman.ttf',
+            9 => 'Trebuchet_MS.ttf',
+            10 => 'Verdana.ttf',
+        );
+        $dir = dirname(__DIR__) . '/assets/font/';
+        if ($font_id == 12 && $custom) {
+            $path = self::resolve_upload_path($custom);
+            if ($path && preg_match('#\.(ttf|otf|ttc)$#i', $path) && is_readable($path)) {
+                return $path;
+            }
+        }
+        if ($font_id == 11) {
+            $cjk = array(
+                $dir . 'NotoSansSC-Regular.otf',
+                $dir . 'wqy-zenhei.ttc',
+                '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+                '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+                '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+                '/usr/share/fonts/truetype/arphic/uming.ttc',
+                'C:/Windows/Fonts/msyh.ttc',
+                'C:/Windows/Fonts/simhei.ttf',
+                'C:/Windows/Fonts/simsun.ttc',
+            );
+            foreach ($cjk as $path) {
+                if (is_readable($path)) {
+                    return $path;
+                }
+            }
+        }
+        $file = isset($bundled[$font_id]) ? $bundled[$font_id] : $bundled[0];
+        $path = $dir . $file;
+        if (is_readable($path)) {
+            return $path;
+        }
+        return $dir . $bundled[0];
+    }
+
     public static function get_xy($rule,$src_w,$src_h,$water_w,$water_h)
     {
         //{1:'右下方',2:'左下方',3:'右上方',4:'左上方',5:'正中心',6:'自定义'}
@@ -266,20 +314,15 @@ class WB_IMGSPY_Image extends IMGSPY_Base
 
             $parse_list[$attachment_id] = 1;
 
-            //$data['original_image'] = '';
-
-            //original
-            //$new_base_name = md5($file);
-            //$new_name = $new_base_name.$ext[0];
-            //$src_name = basename($file);
-            $dir = dirname($file);
-            //$new_file = $dir.'/'.$new_name;
-            $upload_dir = WP_CONTENT_DIR . '/uploads/';
-            $src_img = $upload_dir.$file;
-            //$water_img = $upload_dir.$new_file;
-            if(!file_exists($src_img)){
+            $attached = get_attached_file($attachment_id);
+            $src_img = $attached ? self::resolve_upload_path($attached) : '';
+            if (!$src_img || !file_exists($src_img)) {
+                update_post_meta($attachment_id, '_wb_watermark', 'skip');
                 break;
             }
+            $uploads = wp_upload_dir();
+            $upload_dir = trailingslashit($uploads['basedir']);
+            $dir = dirname($file);
             $backup_base = WP_CONTENT_DIR . '/uploads/#original/';
             $backup_dir = $backup_base.dirname($file);
             if(!is_dir($backup_dir)){
@@ -408,14 +451,25 @@ class WB_IMGSPY_Image extends IMGSPY_Base
             return;
         }
 
-        if($rule['apply'] == 'all'){
-            add_action('wb_imgspy_watermark_image',array(__CLASS__,'wb_imgspy_watermark_image'));
-            if(!wp_next_scheduled('wb_imgspy_watermark_image')){
-                wp_schedule_event(strtotime(current_time('mysql',1)), 'hourly', 'wb_imgspy_watermark_image');
-            }
-        }
+        add_action('wb_imgspy_watermark_image', array(__CLASS__, 'wb_imgspy_watermark_image'));
+        add_action('admin_init', array(__CLASS__, 'maybe_schedule_watermark'));
+        add_action('init', array(__CLASS__, 'parse_watermark'));
+    }
 
-        add_action('init',array(__CLASS__,'parse_watermark'));
+    public static function maybe_schedule_watermark()
+    {
+        $config = WB_IMGSPY_Conf::opt();
+        $rule = isset($config['watermark']) ? $config['watermark'] : array();
+        $apply_all = !empty($rule['apply']) && $rule['apply'] === 'all' && !empty($rule['type']);
+        if ($apply_all) {
+            if (!wp_next_scheduled('wb_imgspy_watermark_image')) {
+                wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', 'wb_imgspy_watermark_image');
+            }
+            return;
+        }
+        if (wp_next_scheduled('wb_imgspy_watermark_image')) {
+            wp_clear_scheduled_hook('wb_imgspy_watermark_image');
+        }
     }
 
     public static function wb_imgspy_watermark_image()
@@ -514,7 +568,7 @@ class WB_IMGSPY_Image extends IMGSPY_Base
                 break;
             }
             foreach($rule as $k=>$v){
-                if(in_array($k,array('image','text','color','apply'))){
+                if(in_array($k,array('image','text','color','apply','font_file'))){
                     $rule[$k] = sanitize_text_field($v);
                 }else{
                     $rule[$k] = absint($v);
@@ -670,24 +724,8 @@ class WB_IMGSPY_Image extends IMGSPY_Base
         $opacity = round($alpha / 100,2);
         $pos = isset($rule['pos']) && $rule['pos']?absint($rule['pos']):1;
         $rule['pos'] = $pos;
-        $font_id = isset($rule['font']) && $rule['font']?absint($rule['font']):0;
-        $font_list = [
-            0=>'consolas-webfont.ttf',
-            1=>'Arial.ttf',
-            2=>'Arial_Black.ttf',
-            3=>'Comic_Sans_MS.ttf',
-            4=>'Courier_New.ttf',
-            5=>'Georgia.ttf',
-            6=>'Impact.ttf',
-            7=>'Tahoma.ttf',
-            8=>'Times_New_Roman.ttf',
-            9=>'Trebuchet_MS.ttf',
-            10=>'Verdana.ttf',
-        ];
-
-
-        //字体文字地址
-        $font = dirname(__DIR__).'/assets/font/'.(isset($font_list[$font_id])?$font_list[$font_id]:$font_list[0]);
+        $font_id = isset($rule['font']) && $rule['font'] !== '' ? absint($rule['font']) : 0;
+        $font = self::resolve_watermark_font($font_id, isset($rule['font_file']) ? $rule['font_file'] : '');
         $image = $draw = $text = null;
         try{
             $image = new Imagick($img_file);
